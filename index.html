@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Riftbound Card Vault</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/lucide@latest"></script>
+</head>
+<body>
+    <header class="navbar">
+        <div class="logo">
+            <i data-lucide="sparkles"></i>
+            <span>RIFTBOUND <strong>VAULT</strong></span>
+        </div>
+        <div class="stats-bar">
+            <div class="stat-pill">
+                <i data-lucide="layers"></i>
+                <span>Tổng thẻ: <strong id="stat-total">0</strong></span>
+            </div>
+            <div class="stat-pill">
+                <i data-lucide="award"></i>
+                <span>Độc nhất: <strong id="stat-unique">0</strong></span>
+            </div>
+        </div>
+        <div class="nav-actions">
+            <button id="btn-sample-data" class="btn btn-secondary">
+                <i data-lucide="database"></i> Nạp data mẫu
+            </button>
+            <button id="btn-open-modal" class="btn btn-primary">
+                <i data-lucide="plus-circle"></i> Thêm thẻ mới
+            </button>
+        </div>
+    </header>
+
+    <main class="container">
+        <section class="control-panel">
+            <div class="search-box">
+                <i data-lucide="search"></i>
+                <input type="text" id="input-search" placeholder="Tìm theo tên, hệ thẻ hoặc mô tả kỹ năng...">
+            </div>
+            <div class="filter-group">
+                <select id="filter-element">
+                    <option value="ALL">Mọi nguyên tố</option>
+                    <option value="Fire">🔥 Hỏa (Fire)</option>
+                    <option value="Water">💧 Thủy (Water)</option>
+                    <option value="Wind">🌪️ Phong (Wind)</option>
+                    <option value="Earth">🪨 Địa (Earth)</option>
+                    <option value="Void">🌌 Hư Không (Void)</option>
+                </select>
+
+                <select id="filter-rarity">
+                    <option value="ALL">Mọi độ hiếm</option>
+                    <option value="Common">Common</option>
+                    <option value="Rare">Rare</option>
+                    <option value="Epic">Epic</option>
+                    <option value="Legendary">Legendary</option>
+                </select>
+            </div>
+        </section>
+
+        <section id="card-grid" class="card-grid">
+            </section>
+
+        <div id="empty-state" class="empty-state hidden">
+            <i data-lucide="inbox"></i>
+            <h3>Chưa tìm thấy thẻ bài nào!</h3>
+            <p>Hãy thử đổi bộ lọc hoặc thêm thẻ mới vào bộ sưu tập của bạn.</p>
+        </div>
+    </main>
+
+    <div id="card-modal" class="modal-overlay hidden">
+        <div class="modal-card">
+            <div class="modal-header">
+                <h3>Thêm Thẻ Bài Riftbound</h3>
+                <button id="btn-close-modal" class="btn-close"><i data-lucide="x"></i></button>
+            </div>
+            <form id="card-form" class="modal-form">
+                <div class="form-group">
+                    <label for="card-name">Tên thẻ bài *</label>
+                    <input type="text" id="card-name" required placeholder="VD: Dragon of Ruin">
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="card-element">Nguyên tố</label>
+                        <select id="card-element">
+                            <option value="Fire">Hỏa (Fire)</option>
+                            <option value="Water">Thủy (Water)</option>
+                            <option value="Wind">Phong (Wind)</option>
+                            <option value="Earth">Địa (Earth)</option>
+                            <option value="Void">Hư Không (Void)</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="card-rarity">Độ hiếm</label>
+                        <select id="card-rarity">
+                            <option value="Common">Common</option>
+                            <option value="Rare">Rare</option>
+                            <option value="Epic">Epic</option>
+                            <option value="Legendary">Legendary</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="card-mana">Mana Cost</label>
+                        <input type="number" id="card-mana" min="0" max="15" value="1">
+                    </div>
+                    <div class="form-group">
+                        <label for="card-count">Số lượng sở hữu</label>
+                        <input type="number" id="card-count" min="1" max="99" value="1">
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="card-image">Link Ảnh Artwork</label>
+                    <input type="url" id="card-image" placeholder="https://domain.com/image.jpg (Để trống lấy ảnh mặc định)">
+                </div>
+
+                <div class="form-group">
+                    <label for="card-desc">Mô tả kỹ năng</label>
+                    <textarea id="card-desc" rows="3" placeholder="Hiệu ứng khi triệu hồi hoặc kích hoạt kỹ năng..."></textarea>
+                </div>
+
+                <div class="modal-footer">
+                    <button type="button" id="btn-cancel" class="btn btn-secondary">Hủy</button>
+                    <button type="submit" class="btn btn-primary">Lưu thẻ</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
