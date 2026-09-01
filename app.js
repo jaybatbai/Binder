@@ -1,15 +1,17 @@
 /**
- * Riftbound Vault - TCGPlayer Engine & Collection Manager
- * Tích hợp bộ bóc tách TCGPlayer, định giá thị trường và quản lý thẻ bài
+ * Riftbound Vault - Automated Data Sync & Portfolio Engine
  */
 
 const STORAGE_KEY = "RIFTBOUND_VAULT_CARDS";
-const TCG_SOURCE_KEY = "RIFTBOUND_TCG_URL";
+const CONFIG_KEY = "RIFTBOUND_AUTO_SOURCE_URL";
 
-// Dữ liệu mẫu khởi tạo chuẩn format TCGPlayer Riftbound
-const INITIAL_RIFTBOUND_CARDS = [
+// URL nguồn dữ liệu tự động (Có thể trỏ tới Raw JSON GitHub của bot cào tự động)
+const DEFAULT_AUTO_ENDPOINT = "https://raw.githubusercontent.com/hextech-vault/riftbound-data/main/cards.json";
+
+// Bộ bài mẫu khởi tạo khi chưa kết nối mạng
+const FALLBACK_RIFTBOUND_CARDS = [
     {
-        id: "rb-tcg-001",
+        id: "rb-001",
         name: "Ahri, Nine-Tailed Fox",
         element: "Void",
         rarity: "Legendary",
@@ -17,10 +19,10 @@ const INITIAL_RIFTBOUND_CARDS = [
         price: 24.99,
         count: 1,
         image: "https://images.unsplash.com/photo-1579783900882-c0d3dad7b119?w=600&auto=format&fit=crop&q=80",
-        desc: "Mê Hoặc: Khi vào sân, chuyển quyền điều khiển 1 quân bài đối phương có Mana <= 3 trong 1 lượt."
+        desc: "Mê Hoặc: Chuyển quyền điều khiển 1 quân bài đối phương có Mana <= 3 trong 1 lượt."
     },
     {
-        id: "rb-tcg-002",
+        id: "rb-002",
         name: "Yasuo, The Unforgiven",
         element: "Wind",
         rarity: "Epic",
@@ -28,10 +30,10 @@ const INITIAL_RIFTBOUND_CARDS = [
         price: 12.50,
         count: 2,
         image: "https://images.unsplash.com/photo-1534447677768-be436bb09401?w=600&auto=format&fit=crop&q=80",
-        desc: "Trăn Trối: Tự động kích hoạt đòn đánh liên hoàn khi có bất kỳ quân bài nào bị Hất Tung."
+        desc: "Trăn Trối: Tự động kích hoạt đòn đánh liên hoàn khi có quân bài bị Hất Tung."
     },
     {
-        id: "rb-tcg-003",
+        id: "rb-003",
         name: "Nautilus, Titan of the Depths",
         element: "Water",
         rarity: "Rare",
@@ -39,39 +41,41 @@ const INITIAL_RIFTBOUND_CARDS = [
         price: 4.75,
         count: 3,
         image: "https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=600&auto=format&fit=crop&q=80",
-        desc: "Thủy Lôi Tầm Nhiệt: Giảm 2 tốc độ tấn công của toàn bộ bàn cờ đối phương."
+        desc: "Thủy Lôi Tầm Nhiệt: Giảm 2 tốc độ tấn công của toàn bộ bài quân đối phương."
     },
     {
-        id: "rb-tcg-004",
+        id: "rb-004",
         name: "Brand, Burning Vengeance",
         element: "Fire",
         rarity: "Rare",
         mana: 3,
         price: 3.20,
-        count: 2,
+        count: 1,
         image: "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=600&auto=format&fit=crop&q=80",
-        desc: "Bốc Cháy: Đốt 2 máu mỗi lượt lên chủ thể đang bị gán hiệu ứng lửa."
+        desc: "Bốc Cháy: Đốt 2 sát thương chuẩn mỗi lượt lên mục tiêu dính lửa."
     }
 ];
 
 class CardVaultApp {
     constructor() {
-        this.cards = this.loadCards();
+        this.cards = this.loadStoredCards();
         this.initDOMElements();
         this.injectCustomStyles();
-        this.injectTCGPlayerModal();
-        this.injectActionButtons();
+        this.injectHeaderStats();
         this.bindEvents();
         this.render();
+
+        // Tự động kích hoạt lấy data ngầm khi mở ứng dụng
+        this.autoFetchLatestData();
     }
 
-    loadCards() {
+    loadStoredCards() {
         try {
             const saved = localStorage.getItem(STORAGE_KEY);
-            return saved ? JSON.parse(saved) : INITIAL_RIFTBOUND_CARDS;
+            return saved ? JSON.parse(saved) : FALLBACK_RIFTBOUND_CARDS;
         } catch (e) {
-            console.error("Lỗi đọc LocalStorage:", e);
-            return INITIAL_RIFTBOUND_CARDS;
+            console.error("Lỗi khi đọc LocalStorage:", e);
+            return FALLBACK_RIFTBOUND_CARDS;
         }
     }
 
@@ -80,8 +84,8 @@ class CardVaultApp {
             localStorage.setItem(STORAGE_KEY, JSON.stringify(this.cards));
             this.updateStats();
         } catch (e) {
-            console.error("Lỗi ghi LocalStorage:", e);
-            this.showToast("Không thể lưu bộ bài vào bộ nhớ!", "error");
+            console.error("Lỗi khi lưu LocalStorage:", e);
+            this.showToast("Không thể ghi dữ liệu vào bộ nhớ máy!", "error");
         }
     }
 
@@ -103,11 +107,10 @@ class CardVaultApp {
         this.form = document.getElementById("card-form");
     }
 
-    // Tiêm style bổ sung cho Price Badge & Modal TCGPlayer
     injectCustomStyles() {
-        if (document.getElementById("tcg-custom-styles")) return;
+        if (document.getElementById("vault-custom-styles")) return;
         const style = document.createElement("style");
-        style.id = "tcg-custom-styles";
+        style.id = "vault-custom-styles";
         style.textContent = `
             .card-price-badge {
                 position: absolute;
@@ -122,262 +125,119 @@ class CardVaultApp {
                 backdrop-filter: blur(4px);
                 box-shadow: 0 2px 8px rgba(0,0,0,0.4);
             }
-            .tcg-import-box {
-                width: 100%;
-                background: #0f141c;
-                border: 1px dashed var(--border-color);
-                border-radius: 8px;
-                padding: 12px;
-                color: var(--text-main);
-                font-family: monospace;
-                font-size: 0.8rem;
-                resize: vertical;
-                min-height: 120px;
-                outline: none;
+            .stat-pill-value {
+                color: #10b981 !important;
             }
-            .tcg-import-box:focus {
-                border-color: var(--primary);
+            .syncing-spin {
+                animation: spin 1s linear infinite;
             }
-            .tcg-tabs {
-                display: flex;
-                gap: 8px;
-                margin-bottom: 12px;
-            }
-            .tcg-tab-btn {
-                padding: 6px 12px;
-                background: var(--bg-card);
-                border: 1px solid var(--border-color);
-                color: var(--text-muted);
-                border-radius: 6px;
-                cursor: pointer;
-                font-size: 0.8rem;
-                font-weight: 600;
-            }
-            .tcg-tab-btn.active {
-                background: var(--primary);
-                color: #fff;
-                border-color: var(--primary);
+            @keyframes spin {
+                from { transform: rotate(0deg); }
+                to { transform: rotate(360deg); }
             }
         `;
         document.head.appendChild(style);
     }
 
-    // Tự động bổ sung các nút công cụ TCGPlayer vào Header
-    injectActionButtons() {
+    injectHeaderStats() {
+        const statsBar = document.querySelector(".stats-bar");
+        if (statsBar && !document.getElementById("stat-portfolio-val")) {
+            const valPill = document.createElement("div");
+            valPill.className = "stat-pill";
+            valPill.innerHTML = `
+                <i data-lucide="dollar-sign" style="color: #10b981;"></i>
+                <span>Giá trị: <strong id="stat-portfolio-val" class="stat-pill-value">$0.00</strong></span>
+            `;
+            statsBar.appendChild(valPill);
+        }
+
         const navActions = document.querySelector(".nav-actions");
-        if (!navActions || document.getElementById("btn-open-tcg-modal")) return;
-
-        // Nút Import TCGPlayer
-        const tcgBtn = document.createElement("button");
-        tcgBtn.id = "btn-open-tcg-modal";
-        tcgBtn.className = "btn btn-secondary";
-        tcgBtn.style.border = "1px solid #10b981";
-        tcgBtn.style.color = "#10b981";
-        tcgBtn.innerHTML = `<i data-lucide="download"></i> Nhập từ TCGPlayer`;
-        tcgBtn.addEventListener("click", () => this.toggleTCGModal(true));
-
-        // Nút Xuất JSON sao lưu
-        const exportBtn = document.createElement("button");
-        exportBtn.id = "btn-export-data";
-        exportBtn.className = "btn btn-secondary";
-        exportBtn.title = "Tải file JSON sao lưu về máy";
-        exportBtn.innerHTML = `<i data-lucide="hard-drive-download"></i>`;
-        exportBtn.addEventListener("click", () => this.exportCollectionJSON());
-
-        navActions.insertBefore(tcgBtn, this.btnOpenModal);
-        navActions.appendChild(exportBtn);
+        if (navActions && !document.getElementById("btn-auto-refresh")) {
+            const autoBtn = document.createElement("button");
+            autoBtn.id = "btn-auto-refresh";
+            autoBtn.className = "btn btn-secondary";
+            autoBtn.title = "Đồng bộ tức thì từ kho dữ liệu online";
+            autoBtn.innerHTML = `<i data-lucide="refresh-cw"></i> Đồng bộ Data`;
+            autoBtn.addEventListener("click", () => this.autoFetchLatestData(true));
+            navActions.insertBefore(autoBtn, this.btnOpenModal);
+        }
     }
 
-    // Modal thông minh chuyên dụng để nạp data TCGPlayer
-    injectTCGPlayerModal() {
-        if (document.getElementById("tcgplayer-modal")) return;
+    // Tự động kết nối và kéo data mới nhất
+    async autoFetchLatestData(isManualTrigger = false) {
+        const sourceUrl = localStorage.getItem(CONFIG_KEY) || DEFAULT_AUTO_ENDPOINT;
+        const refreshBtn = document.getElementById("btn-auto-refresh");
+        const icon = refreshBtn ? refreshBtn.querySelector("i") : null;
 
-        const modalDiv = document.createElement("div");
-        modalDiv.id = "tcgplayer-modal";
-        modalDiv.className = "modal-overlay hidden";
-        modalDiv.innerHTML = `
-            <div class="modal-card" style="max-width: 540px;">
-                <div class="modal-header">
-                    <h3><i data-lucide="database" style="color: #10b981; vertical-align: middle;"></i> Nạp Dữ Liệu TCGPlayer</h3>
-                    <button id="btn-close-tcg-modal" class="btn-close"><i data-lucide="x"></i></button>
-                </div>
+        if (icon) icon.classList.add("syncing-spin");
+        if (isManualTrigger) this.showToast("Đang đồng bộ dữ liệu thẻ mới nhất...", "info");
+
+        try {
+            let response;
+            try {
+                response = await fetch(sourceUrl, { cache: "no-cache" });
+                if (!response.ok) throw new Error("Fetch trực tiếp thất bại");
+            } catch {
+                // Tự động dự phòng qua proxy nếu bị chặn CORS
+                const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(sourceUrl)}`;
+                response = await fetch(proxyUrl);
+            }
+
+            if (!response.ok) throw new Error("Không thể kết nối tới nguồn dữ liệu");
+
+            const rawData = await response.json();
+            const cardList = Array.isArray(rawData) ? rawData : (rawData.results || rawData.cards || rawData.data || []);
+
+            if (cardList.length > 0) {
+                const freshCards = cardList.map((item, idx) => this.normalizeCard(item, idx));
                 
-                <div class="tcg-tabs">
-                    <button class="tcg-tab-btn active" id="tab-btn-paste">Dán JSON / Paste Data</button>
-                    <button class="tcg-tab-btn" id="tab-btn-url">Kéo qua Link URL</button>
-                </div>
+                // Giữ lại số lượng (count) mà người dùng đã sở hữu trong LocalStorage
+                const countMap = new Map(this.cards.map(c => [c.name.toLowerCase(), c.count]));
+                this.cards = freshCards.map(c => ({
+                    ...c,
+                    count: countMap.get(c.name.toLowerCase()) || c.count || 1
+                }));
 
-                <div id="tcg-tab-paste-content">
-                    <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 8px;">
-                        Mở TCGPlayer bấm <code>F12</code> &rarr; tab <strong>Network</strong> &rarr; copy phản hồi JSON của API, hoặc dán mảng thẻ bài bất kỳ vào đây:
-                    </p>
-                    <textarea id="tcg-paste-input" class="tcg-import-box" placeholder='[
-  {
-    "cleanProductName": "Ahri, Nine-Tailed Fox",
-    "marketPrice": 24.99,
-    "imageUrl": "https://...",
-    "rarityName": "Legendary"
-  }
-]'></textarea>
-                </div>
-
-                <div id="tcg-tab-url-content" class="hidden">
-                    <div class="form-group" style="margin-bottom: 12px;">
-                        <label>Đường link TCGPlayer / API Endpoint</label>
-                        <input type="url" id="tcg-url-input" placeholder="https://api.tcgplayer.com/... hoặc link proxy JSON" value="https://www.tcgplayer.com/search/riftbound-league-of-legends-trading-card-game/product?productLineName=riftbound-league-of-legends-trading-card-game&view=grid">
-                    </div>
-                </div>
-
-                <div class="modal-footer" style="margin-top: 15px;">
-                    <button type="button" id="btn-cancel-tcg" class="btn btn-secondary">Đóng</button>
-                    <button type="button" id="btn-execute-tcg" class="btn btn-primary" style="background: #10b981;">Bắt đầu Nạp Thẻ</button>
-                </div>
-            </div>
-        `;
-        document.body.appendChild(modalDiv);
-
-        // Bind Tab Switch
-        const tabPaste = modalDiv.querySelector("#tab-btn-paste");
-        const tabUrl = modalDiv.querySelector("#tab-btn-url");
-        const contentPaste = modalDiv.querySelector("#tcg-tab-paste-content");
-        const contentUrl = modalDiv.querySelector("#tcg-tab-url-content");
-
-        tabPaste.addEventListener("click", () => {
-            tabPaste.classList.add("active");
-            tabUrl.classList.remove("active");
-            contentPaste.classList.remove("hidden");
-            contentUrl.classList.add("hidden");
-        });
-
-        tabUrl.addEventListener("click", () => {
-            tabUrl.classList.add("active");
-            tabPaste.classList.remove("active");
-            contentUrl.classList.remove("hidden");
-            contentPaste.classList.add("hidden");
-        });
-
-        modalDiv.querySelector("#btn-close-tcg-modal").addEventListener("click", () => this.toggleTCGModal(false));
-        modalDiv.querySelector("#btn-cancel-tcg").addEventListener("click", () => this.toggleTCGModal(false));
-        modalDiv.querySelector("#btn-execute-tcg").addEventListener("click", () => this.handleTCGImportExecution());
-    }
-
-    toggleTCGModal(isOpen) {
-        const modal = document.getElementById("tcgplayer-modal");
-        if (!modal) return;
-        if (isOpen) {
-            modal.classList.remove("hidden");
-        } else {
-            modal.classList.add("hidden");
+                this.saveCards();
+                this.render();
+                if (isManualTrigger) this.showToast(`Đã đồng bộ thành công ${this.cards.length} thẻ bài!`, "success");
+            }
+        } catch (error) {
+            console.warn("Chưa tải được data mới, đang sử dụng dữ liệu bộ nhớ cục bộ:", error.message);
+            if (isManualTrigger) this.showToast("Dùng dữ liệu lưu tạm do không kết nối được nguồn online.", "info");
+        } finally {
+            if (icon) icon.classList.remove("syncing-spin");
         }
     }
 
-    // Bộ xử lý nạp TCGPlayer linh hoạt
-    async handleTCGImportExecution() {
-        const isPasteTab = document.getElementById("tab-btn-paste").classList.contains("active");
-        
-        if (isPasteTab) {
-            const rawText = document.getElementById("tcg-paste-input").value.trim();
-            if (!rawText) {
-                this.showToast("Vui lòng dán dữ liệu JSON vào khung!", "error");
-                return;
-            }
-            try {
-                const parsed = JSON.parse(rawText);
-                const items = Array.isArray(parsed) ? parsed : (parsed.results?.[0]?.results || parsed.results || parsed.data || []);
-                if (!items.length) throw new Error("Không trích xuất được danh sách thẻ từ JSON này");
+    normalizeCard(raw, index) {
+        const name = raw.name || raw.cleanProductName || raw.title || `Riftbound Card #${index + 1}`;
+        const price = parseFloat(raw.price || raw.marketPrice || raw.lowestPrice || 1.99);
 
-                const newCards = items.map((item, idx) => this.normalizeTCGCard(item, idx));
-                this.cards = [...newCards, ...this.cards];
-                this.saveCards();
-                this.render();
-                this.toggleTCGModal(false);
-                this.showToast(`Đã nạp thành công ${newCards.length} thẻ từ TCGPlayer!`, "success");
-            } catch (err) {
-                this.showToast(`Lỗi cú pháp JSON: ${err.message}`, "error");
-            }
-        } else {
-            const url = document.getElementById("tcg-url-input").value.trim();
-            if (!url) return;
-            this.showToast("Đang kết nối TCGPlayer qua Gateway...", "info");
-            
-            try {
-                // Thử fetch qua proxy mở
-                const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`;
-                const response = await fetch(proxyUrl);
-                if (!response.ok) throw new Error("TCGPlayer chặn kết nối từ IP này");
-
-                const text = await response.text();
-                // Phân tích nếu là JSON hoặc cố gắng trích xuất từ HTML
-                let parsedItems = [];
-                try {
-                    const jsonData = JSON.parse(text);
-                    parsedItems = Array.isArray(jsonData) ? jsonData : (jsonData.results?.[0]?.results || jsonData.data || []);
-                } catch {
-                    // Fallback Regex Parser trích xuất thẻ từ HTML của TCGPlayer
-                    const nameMatches = [...text.matchAll(/class="search-result__title"[^>]*>([^<]+)<\/span>/g)];
-                    parsedItems = nameMatches.map((m, idx) => ({
-                        cleanProductName: m[1].trim(),
-                        marketPrice: (Math.random() * 15 + 2).toFixed(2),
-                        rarityName: "Rare"
-                    }));
-                }
-
-                if (!parsedItems.length) {
-                    throw new Error("Không thể vượt qua Cloudflare của TCGPlayer. Hãy chuyển sang tab 'Dán JSON' để nhập tức thì!");
-                }
-
-                const newCards = parsedItems.map((item, idx) => this.normalizeTCGCard(item, idx));
-                this.cards = [...newCards, ...this.cards];
-                this.saveCards();
-                this.render();
-                this.toggleTCGModal(false);
-                this.showToast(`Đã kéo thành công ${newCards.length} thẻ!`, "success");
-            } catch (err) {
-                this.showToast(err.message, "error");
-            }
-        }
-    }
-
-    // Chuẩn hóa cấu trúc của TCGPlayer sang format Vault
-    normalizeTCGCard(raw, index) {
-        const name = raw.cleanProductName || raw.productName || raw.name || raw.title || `Riftbound Card #${index + 1}`;
-        const price = parseFloat(raw.marketPrice || raw.price || raw.lowestPrice || 0);
-        
-        // Tự động gán nguyên tố dựa theo tên hoặc keyword nếu TCGPlayer không có sẵn field element
+        // Tự động nhận diện nguyên tố theo tên nếu dữ liệu gốc không cung cấp
         let detectedElement = raw.element || "Void";
-        const lowerName = name.toLowerCase();
-        if (lowerName.includes("fire") || lowerName.includes("brand") || lowerName.includes("pyro")) detectedElement = "Fire";
-        else if (lowerName.includes("water") || lowerName.includes("tide") || lowerName.includes("nautilus")) detectedElement = "Water";
-        else if (lowerName.includes("wind") || lowerName.includes("gale") || lowerName.includes("yasuo")) detectedElement = "Wind";
-        else if (lowerName.includes("earth") || lowerName.includes("stone") || lowerName.includes("malphite")) detectedElement = "Earth";
+        const lower = name.toLowerCase();
+        if (lower.includes("fire") || lower.includes("brand") || lower.includes("infernal")) detectedElement = "Fire";
+        else if (lower.includes("water") || lower.includes("tide") || lower.includes("nautilus")) detectedElement = "Water";
+        else if (lower.includes("wind") || lower.includes("gale") || lower.includes("yasuo")) detectedElement = "Wind";
+        else if (lower.includes("earth") || lower.includes("stone") || lower.includes("terra")) detectedElement = "Earth";
 
         return {
-            id: raw.productId ? `tcg-${raw.productId}` : `rb-tcg-${Date.now()}-${index}`,
+            id: raw.id ? String(raw.id) : `rb-sync-${Date.now()}-${index}`,
             name: name,
             element: this.capitalize(detectedElement),
-            rarity: this.capitalize(raw.rarityName || raw.rarity || "Rare"),
-            mana: parseInt(raw.manaCost || raw.cost || Math.floor(Math.random() * 6) + 1, 10),
-            price: price > 0 ? price : 1.99,
+            rarity: this.capitalize(raw.rarity || raw.rarityName || "Common"),
+            mana: parseInt(raw.mana ?? raw.manaCost ?? raw.cost ?? 1, 10),
+            price: price > 0 ? price : 0.99,
             count: parseInt(raw.count || 1, 10),
-            image: raw.imageUrl || raw.image || "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=600&auto=format&fit=crop&q=80",
-            desc: raw.description || raw.desc || "Thẻ bài chính hãng từ nguồn dữ liệu Riftbound TCGPlayer."
+            image: raw.image || raw.imageUrl || raw.art || "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=600&auto=format&fit=crop&q=80",
+            desc: raw.desc || raw.description || raw.effect || "Thẻ bài Riftbound chính hãng."
         };
     }
 
     capitalize(str) {
         if (!str) return "Common";
         return str.charAt(0).toUpperCase() + str.slice(1).toLowerCase();
-    }
-
-    exportCollectionJSON() {
-        const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(this.cards, null, 2));
-        const downloadAnchor = document.createElement('a');
-        downloadAnchor.setAttribute("href", dataStr);
-        downloadAnchor.setAttribute("download", `riftbound_collection_${new Date().toISOString().slice(0,10)}.json`);
-        document.body.appendChild(downloadAnchor);
-        downloadAnchor.click();
-        downloadAnchor.remove();
-        this.showToast("Đã xuất file sao lưu JSON thành công!");
     }
 
     showToast(message, type = "success") {
@@ -404,7 +264,6 @@ class CardVaultApp {
             font-size: 14px;
             font-weight: 600;
             box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-            animation: slideIn 0.3s ease forwards;
         `;
         toast.textContent = message;
         toastContainer.appendChild(toast);
@@ -418,10 +277,10 @@ class CardVaultApp {
         this.filterRarity.addEventListener("change", () => this.render());
 
         this.btnSample.addEventListener("click", () => {
-            this.cards = [...INITIAL_RIFTBOUND_CARDS];
+            this.cards = [...FALLBACK_RIFTBOUND_CARDS];
             this.saveCards();
             this.render();
-            this.showToast("Đã khôi phục bộ sưu tập khởi đầu!");
+            this.showToast("Đã khôi phục bộ sưu tập mặc định!");
         });
 
         this.btnOpenModal.addEventListener("click", () => this.toggleModal(true));
@@ -495,9 +354,15 @@ class CardVaultApp {
     updateStats() {
         const totalCards = this.cards.reduce((sum, item) => sum + (item.count || 1), 0);
         const uniqueCards = this.cards.length;
+        const totalValue = this.cards.reduce((sum, item) => sum + ((item.price || 0) * (item.count || 1)), 0);
 
-        this.statTotal.textContent = totalCards;
-        this.statUnique.textContent = uniqueCards;
+        if (this.statTotal) this.statTotal.textContent = totalCards;
+        if (this.statUnique) this.statUnique.textContent = uniqueCards;
+
+        const valElem = document.getElementById("stat-portfolio-val");
+        if (valElem) {
+            valElem.textContent = `$${totalValue.toFixed(2)}`;
+        }
     }
 
     getFilteredCards() {
